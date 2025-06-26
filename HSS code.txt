@@ -1,0 +1,94 @@
+#include <SoftwareSerial.h>
+
+// Create software serial object to communicate with SIM800L
+SoftwareSerial GSM(11, 10); // SIM800L Tx to D10, Rx to D11
+
+char phone_no[] = "+919959936205"; // Change to your target phone number
+#define bt_C A1 // Button pin
+
+void setup() {
+  Serial.begin(9600);     // For serial monitor
+  GSM.begin(9600);        // Start SIM800L communication
+  delay(2000);            // Allow GSM to stabilize
+
+  pinMode(bt_C, INPUT_PULLUP); // Button input with internal pull-up
+
+  Serial.println("Initializing GSM Module...");
+
+  if (!initModule("AT", "OK", 3000)) {
+    Serial.println("SIM800L not responding! Check wiring and power.");
+    return;
+  }
+
+  if (!checkSIMStatus()) {
+    Serial.println("SIM card not detected or not ready!");
+    return;
+  }
+
+  Serial.println("SIM800L is ready to use.");
+}
+
+void loop() {
+  if (digitalRead(bt_C) == LOW) {
+    Serial.println("Button Pressed! Starting call...");
+    callUp(phone_no);
+
+    // Wait until button is released to prevent multiple triggers
+    while (digitalRead(bt_C) == LOW) {
+      delay(100);
+    }
+
+    delay(500); // Debounce delay
+  }
+}
+
+void callUp(char *number) {
+  Serial.print("Dialing: ");
+  Serial.println(number);
+
+  GSM.print("ATD"); GSM.print(number); GSM.println(";"); // Make the call
+  delay(20000); // Wait for 20 seconds
+  GSM.println("ATH"); // Hang up the call
+  Serial.println("Call ended.");
+  delay(1000);
+}
+
+bool initModule(const char *cmd, const char *expected, int timeout) {
+  for (int i = 0; i < 5; i++) {
+    Serial.print("Sending: "); Serial.println(cmd);
+    GSM.println(cmd);
+    long startTime = millis();
+
+    while (millis() - startTime < timeout) {
+      if (GSM.available()) {
+        String response = GSM.readStringUntil('\n');
+        Serial.print("Response: "); Serial.println(response);
+        if (response.indexOf(expected) != -1) {
+          Serial.println("GSM Module Initialized.");
+          return true;
+        }
+      }
+    }
+
+    Serial.println("Retrying...");
+    delay(timeout);
+  }
+  return false;
+}
+
+bool checkSIMStatus() {
+  GSM.println("AT+CPIN?");
+  long startTime = millis();
+
+  while (millis() - startTime < 3000) {
+    if (GSM.available()) {
+      String response = GSM.readStringUntil('\n');
+      Serial.print("SIM Status: "); Serial.println(response);
+      if (response.indexOf("READY") != -1) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
